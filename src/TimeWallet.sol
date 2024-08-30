@@ -50,6 +50,21 @@ contract TimeWallet {
         uint256 currentTime,
         uint256 amount
     ) {
+        /* 方法1 Begin */
+        // uint256 currentWithdrawAmount = 0;
+        // uint256 i = withdrawRecords.length - 1;
+        // for (; i > 0; --i) {
+        //     if (withdrawRecords[i].timestamp + WITHDRAW_INTERVAL <= currentTime)
+        //         break;
+        //     if (
+        //         currentWithdrawAmount + withdrawRecords[i].amount + amount >
+        //         WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL
+        //     ) revert WithdrawAmountLimitPerIntervalReached();
+        //     currentWithdrawAmount += withdrawRecords[i].amount;
+        // }
+        /* 方法1 End */
+
+        /* 方法2 Begin */
         uint256 lastestIndex = withdrawRecords[0].timestamp;
         uint256 lastestAmounts = withdrawRecords[0].amount;
         uint256 recordsLength = withdrawRecords.length;
@@ -77,18 +92,7 @@ contract TimeWallet {
 
         if (lastestAmounts + amount > WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL)
             revert WithdrawAmountLimitPerIntervalReached();
-
-        // uint256 currentWithdrawAmount = 0;
-        // uint256 i = withdrawRecords.length - 1;
-        // for (; i > 0; --i) {
-        //     if (withdrawRecords[i].timestamp + WITHDRAW_INTERVAL <= currentTime)
-        //         break;
-        //     if (
-        //         currentWithdrawAmount + withdrawRecords[i].amount + amount >
-        //         WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL
-        //     ) revert WithdrawAmountLimitPerIntervalReached();
-        //     currentWithdrawAmount += withdrawRecords[i].amount;
-        // }
+        /* 方法2 End */
 
         _;
     }
@@ -100,7 +104,7 @@ contract TimeWallet {
     }
 
     function withdraw(
-        uint256 amount 
+        uint256 amount
     )
         external
         onlyOwner
@@ -110,9 +114,11 @@ contract TimeWallet {
     {
         withdrawRecords.push(WithdrawRecord(block.timestamp, amount));
 
+        /* 方法2 Begin */
         withdrawRecords[0].amount += amount;
         if (withdrawRecords[0].timestamp == 0)
             withdrawRecords[0].timestamp = withdrawRecords.length - 1;
+        /* 方法2 End */
 
         ERC20(TOKEN_ADDRESS).transfer(msg.sender, amount);
         emit Withdraw(msg.sender, block.timestamp, amount);

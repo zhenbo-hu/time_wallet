@@ -23,8 +23,8 @@ contract TimeWalletTest is Test {
         assertEq(localTimeWallet.TOKEN_ADDRESS(), address(usdt));
     }
 
-    function testReceive() public {
-        assertEq(usdt.balanceOf(address(timeWallet)), 500 * 1e6);
+    function testWithdraw() public {
+        timeWallet.withdraw(50 * 1e6);
     }
 
     function testWithdrawLess100UsdtOneTimeLess1DaySuccessful() public {
