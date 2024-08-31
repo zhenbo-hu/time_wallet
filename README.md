@@ -1,12 +1,33 @@
 # 钱包合约
 
-## 功能
+- [钱包合约](#钱包合约)
+  - [1. V1](#1-v1)
+    - [1.1 功能](#11-功能)
+    - [1.2 核心逻辑](#12-核心逻辑)
+      - [方法 1](#方法-1)
+      - [方法 2](#方法-2)
+  - [V2](#v2)
+    - [2.1 功能](#21-功能)
+    - [2.2 核心逻辑](#22-核心逻辑)
+  - [gas 消耗分析](#gas-消耗分析)
+    - [ERC20 gas report](#erc20-gas-report)
+    - [V1 方法 1 gas](#v1-方法-1-gas)
+    - [V1 方法 2 gas report](#v1-方法-2-gas-report)
+    - [V2 gas report](#v2-gas-report)
+  - [单元测试结果](#单元测试结果)
+  - [V3](#v3)
+    - [3.1 功能](#31-功能)
+    - [3.2 核心逻辑](#32-核心逻辑)
+
+## 1. V1
+
+### 1.1 功能
 
 - Owner 可以通过 `withdraw` 方法提取钱包中的 token
 - 每 24 小时提取限制总额度为 `100 * 1e6`
 - 单次提取限制额度为 `50 * 1e6`
 
-## 核心逻辑
+### 1.2 核心逻辑
 
 通过多个 `modifier` 来检查资金提取的时间间隔、每次提取金额、24 小时内提取总金额等信息。
 
@@ -43,7 +64,7 @@ struct WithdrawRecord {
 WithdrawRecord[] private withdrawRecords;
 ```
 
-### 方法 1
+#### 方法 1
 
 每次提取时，从 `withdrawRecords` 数组中倒序遍历，直到找到最近一次提取的时间戳加上 `WITHDRAW_INTERVAL` 小于等于当前时间戳的记录，或者遍历完整个数组。
 
@@ -87,7 +108,7 @@ function withdraw(
 }
 ```
 
-### 方法 2
+#### 方法 2
 
 利用 `index=0` 没有被用到的特点，用于记录上一次提取时同一天的全部提取金额和最初提取记录所在的 index。这样对于在 24 小时内的提取行为，不需要遍历数组，可以直接判断。当超过 24 小时时，再遍历数组，更新数据。
 
@@ -152,118 +173,118 @@ function withdraw(
 }
 ```
 
+## V2
+
+### 2.1 功能
+
+在 V1 方法 2 的基础上，增加了对多币种的支持（ERC20），每个币种单独设定提取规则。
+
+### 2.2 核心逻辑
+
+定义 `TokenWithdrawRule` 结构体，用于记录每个币种的提现规则。
+
+```solidity
+struct TokenWithdrawRule {
+    bool isSet;
+    uint256 withdrawInterval;
+    uint256 withdrawAmountLimitPerInterval;
+    uint256 withdrawAmountLimitPerTime;
+}
+
+mapping(address => TokenWithdrawRule) private tokenWithdrawRules;
+mapping(address => WithdrawRecord[]) private withdrawRecords;
+```
+
 ## gas 消耗分析
 
-为于 `ERC20` 转账做对比，这里实现了一个简单的 ERC20 合约：[USDT.sol](./src/USDT.sol)。
+为于 `ERC20` 转账做对比，这里实现了一个简单的 ERC20 合约：[ERC20Token.sol](./src/ERC20Token.sol)。
 
-利用 `foundry test --gas-report` 估计 gas 消耗情况：
+利用 `foundry test --gas-report` 估计 gas 消耗情况（后面的倍数均以 ERC20 `transfer` 为基准对比）：
 
-- ERC20 `transfer` 平均 gas : `34461`
-- 方法 1 `withdraw` 平均 gas : `106525`, 约 3.09 倍
-- 方法 2 `withdraw` 平均 gas : `100104`, 约 2.90 倍
+- ERC20 `transfer` 平均 gas : `37354`
+- V1 方法 1 `withdraw` 平均 gas : `103068`, 约 2.76 倍
+- V1 方法 2 `withdraw` 平均 gas : `99487`, 约 2.66 倍
+- V2 `withdraw` 平均 gas : `108225`, 约 2.90 倍
 
-### 方法 1 gas report
+### ERC20 gas report
 
 ```shell
-$ forge test --gas-report
-[⠊] Compiling...
-[⠊] Compiling 2 files with Solc 0.8.26
-[⠒] Solc 0.8.26 finished in 925.62ms
-Compiler run successful!
-
-Ran 1 test for test/USDT.t.sol:USDTTest
-[PASS] testTransfer() (gas: 56509)
-Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 6.07ms (976.71µs CPU time)
-
-Ran 11 tests for test/TimeWallet.t.sol:TimeWalletTest
-[PASS] testConstructor() (gas: 413286)
-[PASS] testWithdraw() (gas: 111544)
-[PASS] testWithdrawAllUsdtMultiTimeOver1DayRevertNoEnoughTokenAmount() (gas: 5651708)
-[PASS] testWithdrawAllUsdtMultiTimeOver1DaySuccessful() (gas: 5618544)
-[PASS] testWithdrawLess100UsdtMultiTimeLess1DaySuccessful() (gas: 213965)
-[PASS] testWithdrawLess100UsdtOneTimeLess1DaySuccessful() (gas: 119645)
-[PASS] testWithdrawOver100UsdtMultiTimeOver1DaySuccessful() (gas: 387961)
-[PASS] testWithdrawOver100UsdtMultiTimesLess1DayRevertWithdrawAmountLimitPerIntervalReached() (gas: 459890)
-[PASS] testWithdrawOver100UsdtMultiTimesOver1DayRevertWithdrawAmountLimitPerIntervalReached() (gas: 682899)
-[PASS] testWithdrawOver50UsdtOneTimeRevert() (gas: 43049)
-[PASS] testWithdrawRevertNotOwner() (gas: 38017)
-Suite result: ok. 11 passed; 0 failed; 0 skipped; finished in 8.73ms (19.05ms CPU time)
-| src/TimeWallet.sol:TimeWallet contract |                 |        |        |        |         |
-|----------------------------------------|-----------------|--------|--------|--------|---------|
-| Deployment Cost                        | Deployment Size |        |        |        |         |
-| 373784                                 | 1668            |        |        |        |         |
-| Function Name                          | min             | avg    | median | max    | # calls |
-| OWNER                                  | 204             | 204    | 204    | 204    | 1       |
-| TOKEN_ADDRESS                          | 182             | 182    | 182    | 182    | 1       |
-| withdraw                               | 21564           | 106525 | 107701 | 139855 | 123     |
-
-
-
-
-Ran 2 test suites in 14.73ms (14.80ms CPU time): 12 tests passed, 0 failed, 0 skipped (12 total tests)
+| src/ERC20Token.sol:ERC20Token contract |                 |       |        |       |         |
+|----------------------------------------|-----------------|-------|--------|-------|---------|
+| Deployment Cost                        | Deployment Size |       |        |       |         |
+| 744476                                 | 4188            |       |        |       |         |
+| Function Name                          | min             | avg   | median | max   | # calls |
+| balanceOf                              | 519             | 788   | 519    | 2519  | 52      |
+| transfer                               | 29370           | 37354 | 34170  | 51282 | 133     |
 ```
 
-### 方法 2 gas report
+### V1 方法 1 gas
 
 ```shell
-$ forge test --gas-report
-[⠢] Compiling...
-[⠒] Compiling 3 files with Solc 0.8.26
-[⠢] Solc 0.8.26 finished in 1.87s
-Compiler run successful!
-
-Ran 1 test for test/USDT.t.sol:USDTTest
-[PASS] testTransfer() (gas: 56509)
-Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 6.01ms (998.83µs CPU time)
-
-Ran 11 tests for test/TimeWallet.t.sol:TimeWalletTest
-[PASS] testConstructor() (gas: 500879)
-[PASS] testWithdraw() (gas: 157313)
-[PASS] testWithdrawAllUsdtMultiTimeOver1DayRevertNoEnoughTokenAmount() (gas: 5119776)
-[PASS] testWithdrawAllUsdtMultiTimeOver1DaySuccessful() (gas: 5086612)
-[PASS] testWithdrawLess100UsdtMultiTimeLess1DaySuccessful() (gas: 265049)
-[PASS] testWithdrawLess100UsdtOneTimeLess1DaySuccessful() (gas: 165414)
-[PASS] testWithdrawOver100UsdtMultiTimeOver1DaySuccessful() (gas: 461424)
-[PASS] testWithdrawOver100UsdtMultiTimesLess1DayRevertWithdrawAmountLimitPerIntervalReached() (gas: 491612)
-[PASS] testWithdrawOver100UsdtMultiTimesOver1DayRevertWithdrawAmountLimitPerIntervalReached() (gas: 709161)
-[PASS] testWithdrawOver50UsdtOneTimeRevert() (gas: 43049)
-[PASS] testWithdrawRevertNotOwner() (gas: 38017)
-Suite result: ok. 11 passed; 0 failed; 0 skipped; finished in 8.70ms (18.22ms CPU time)
-| src/TimeWallet.sol:TimeWallet contract |                 |        |        |        |         |
-|----------------------------------------|-----------------|--------|--------|--------|---------|
-| Deployment Cost                        | Deployment Size |        |        |        |         |
-| 461302                                 | 2074            |        |        |        |         |
-| Function Name                          | min             | avg    | median | max    | # calls |
-| OWNER                                  | 204             | 204    | 204    | 204    | 1       |
-| TOKEN_ADDRESS                          | 182             | 182    | 182    | 182    | 1       |
-| withdraw                               | 21564           | 100104 | 99898  | 152105 | 123     |
-
-
-
-
-Ran 2 test suites in 14.81ms (14.71ms CPU time): 12 tests passed, 0 failed, 0 skipped (12 total tests)
+| src/AllowanceWallet.sol:AllowanceWallet contract |                 |        |        |        |         |
+|--------------------------------------------------|-----------------|--------|--------|--------|---------|
+| Deployment Cost                                  | Deployment Size |        |        |        |         |
+| 323580                                           | 1427            |        |        |        |         |
+| Function Name                                    | min             | avg    | median | max    | # calls |
+| OWNER                                            | 204             | 204    | 204    | 204    | 1       |
+| TOKEN_ADDRESS                                    | 182             | 182    | 182    | 182    | 1       |
+| withdraw                                         | 21564           | 103068 | 104904 | 138941 | 72      |
 ```
 
-- ERC20 transfer 的 gas 消耗
+### V1 方法 2 gas report
 
 ```shell
-$ forge test --match-test testTransfer --gas-report
-[⠊] Compiling...
-No files changed, compilation skipped
+| src/AllowanceWallet.sol:AllowanceWallet contract |                 |       |        |        |         |
+|--------------------------------------------------|-----------------|-------|--------|--------|---------|
+| Deployment Cost                                  | Deployment Size |       |        |        |         |
+| 411092                                           | 1833            |       |        |        |         |
+| Function Name                                    | min             | avg   | median | max    | # calls |
+| OWNER                                            | 204             | 204   | 204    | 204    | 1       |
+| TOKEN_ADDRESS                                    | 182             | 182   | 182    | 182    | 1       |
+| withdraw                                         | 21564           | 99487 | 98984  | 151191 | 72      |
+```
 
-Ran 2 tests for test/USDT.t.sol:USDTTest
-[PASS] testTransfer() (gas: 56509)
-[PASS] testTransferMultiTimes() (gas: 3486595)
-Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 11.23ms (5.42ms CPU time)
-| src/USDT.sol:USDT contract |                 |       |        |       |         |
-|----------------------------|-----------------|-------|--------|-------|---------|
-| Deployment Cost            | Deployment Size |       |        |       |         |
-| 737958                     | 3666            |       |        |       |         |
-| Function Name              | min             | avg   | median | max   | # calls |
-| transfer                   | 29370           | 34461 | 34170  | 51282 | 101     |
+### V2 gas report
 
+```shell
+| src/AllowanceWalletV2.sol:AllowanceWalletV2 contract |                 |        |        |        |         |
+|------------------------------------------------------|-----------------|--------|--------|--------|---------|
+| Deployment Cost                                      | Deployment Size |        |        |        |         |
+| 642513                                               | 2793            |        |        |        |         |
+| Function Name                                        | min             | avg    | median | max    | # calls |
+| OWNER                                                | 183             | 183    | 183    | 183    | 1       |
+| getTokenRule                                         | 982             | 982    | 982    | 982    | 1       |
+| setTokenRule                                         | 24596           | 133275 | 137978 | 138026 | 24      |
+| withdraw                                             | 22056           | 108225 | 109808 | 171316 | 68      |
+```
 
+## 单元测试结果
 
+| File                      | % Lines         | % Statements    | % Branches     | % Funcs        |
+| ------------------------- | --------------- | --------------- | -------------- | -------------- |
+| src/AllowanceWallet.sol   | 100.00% (16/16) | 100.00% (22/22) | 100.00% (3/3)  | 100.00% (5/5)  |
+| src/AllowanceWalletV2.sol | 100.00% (28/28) | 94.44% (34/36)  | 80.00% (8/10)  | 100.00% (8/8)  |
+| src/ERC20Token.sol        | 100.00% (1/1)   | 100.00% (1/1)   | 100.00% (0/0)  | 100.00% (1/1)  |
+| Total                     | 55.56% (45/81)  | 53.77% (57/106) | 50.00% (11/22) | 60.87% (14/23) |
 
-Ran 1 test suite in 21.01ms (11.23ms CPU time): 2 tests passed, 0 failed, 0 skipped (2 total tests)
+## V3
+
+### 3.1 功能
+
+在 V1 方法 2 的基础上，支持多币种，单一提取规则。
+
+### 3.2 核心逻辑
+
+通过引入 Chainlink 的聚合器合约，获取币种的价格，并折合成 USDT 价值，判断是否满足提取规则。
+
+```solidity
+import {AggregatorV3Interface} from "foundry-chainlink-toolkit/src/interfaces/feeds/AggregatorV3Interface.sol";
+
+function getTokenPrice(address token) internal view returns (uint256) {
+    AggregatorV3Interface priceContract = AggregatorV3Interface(
+        tokenPriceContracts[token]
+    );
+    (, int256 price, , , ) = priceContract.latestRoundData();
+    return uint256(price);
+}
 ```

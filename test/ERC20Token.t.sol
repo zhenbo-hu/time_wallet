@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
-import "../src/USDT.sol";
+import {Test} from "forge-std/Test.sol";
+import {ERC20Token} from "../src/ERC20Token.sol";
 
-contract USDTTest is Test {
-    USDT public usdt;
+contract ERC20TokenTest is Test {
+    uint256 public immutable TOTAL_SUPPLY = 500 * 1e6;
+    ERC20Token public usdt;
 
     function setUp() public {
-        usdt = new USDT();
+        usdt = new ERC20Token("Tether USD", "USDT", 6, TOTAL_SUPPLY);
     }
 
     function testTransfer() public {
