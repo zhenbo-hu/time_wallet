@@ -77,18 +77,18 @@ contract AllowanceWallet {
         /* 方法1 End */
 
         /* 方法2 Begin */
-        uint256 lastestIndex = withdrawRecords[0].timestamp;
-        uint256 lastestAmounts = withdrawRecords[0].amount;
+        uint256 latestIndex = withdrawRecords[0].timestamp;
+        uint256 latestAmounts = withdrawRecords[0].amount;
         uint256 recordsLength = withdrawRecords.length;
 
         if (
-            lastestIndex != 0 &&
-            withdrawRecords[lastestIndex].timestamp + WITHDRAW_INTERVAL <=
+            latestIndex != 0 &&
+            withdrawRecords[latestIndex].timestamp + WITHDRAW_INTERVAL <=
             currentTime
         ) {
-            uint256 i = lastestIndex;
+            uint256 i = latestIndex;
             do {
-                lastestAmounts -= withdrawRecords[i++].amount;
+                latestAmounts -= withdrawRecords[i++].amount;
             } while (
                 i < recordsLength &&
                     withdrawRecords[i].timestamp + WITHDRAW_INTERVAL <=
@@ -96,13 +96,13 @@ contract AllowanceWallet {
             );
 
             if (i < recordsLength) {
-                withdrawRecords[0] = WithdrawRecord(i, lastestAmounts);
+                withdrawRecords[0] = WithdrawRecord(i, latestAmounts);
             } else {
                 withdrawRecords[0] = WithdrawRecord(0, 0);
             }
         }
 
-        if (lastestAmounts + amount > WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL)
+        if (latestAmounts + amount > WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL)
             revert WithdrawAmountLimitPerIntervalReached();
         /* 方法2 End */
 

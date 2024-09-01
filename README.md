@@ -32,12 +32,22 @@
 
 通过多个 `modifier` 来检查资金提取的时间间隔、每次提取金额、24 小时内提取总金额等信息。
 
+`checkLock` 用于防止重入攻击
+
+```solidity
+modifier checkLock() {
+        if (lock) revert WithdrawInProgress();
+        lock = true;
+        _;
+        lock = false;
+    }
+```
+
 `checkTokenAmount` 用于检查当前合约是否拥有所需数量的 token
 
 ```solidity
-modifier checkTokenAmount(uint256 amount) {
-    if (ERC20(TOKEN_ADDRESS).balanceOf(address(this)) < amount)
-        revert NoEnoughTokenAmount();
+modifier checkAmountEfficient(uint256 amount) {
+    if (amount > tokenAmount) revert NoEnoughTokenAmount();
     _;
 }
 ```
@@ -122,18 +132,18 @@ modifier checkWithdrawTimeIntervalAndAmount(
     uint256 currentTime,
     uint256 amount
 ) {
-    uint256 lastestIndex = withdrawRecords[0].timestamp;
-    uint256 lastestAmounts = withdrawRecords[0].amount;
+    uint256 latestIndex = withdrawRecords[0].timestamp;
+    uint256 latestAmounts = withdrawRecords[0].amount;
     uint256 recordsLength = withdrawRecords.length;
 
     if (
-        lastestIndex != 0 &&
-        withdrawRecords[lastestIndex].timestamp + WITHDRAW_INTERVAL <=
+        latestIndex != 0 &&
+        withdrawRecords[latestIndex].timestamp + WITHDRAW_INTERVAL <=
         currentTime
     ) {
-        uint256 i = lastestIndex;
+        uint256 i = latestIndex;
         do {
-            lastestAmounts -= withdrawRecords[i++].amount;
+            latestAmounts -= withdrawRecords[i++].amount;
         } while (
             i < recordsLength &&
                 withdrawRecords[i].timestamp + WITHDRAW_INTERVAL <=
@@ -141,13 +151,13 @@ modifier checkWithdrawTimeIntervalAndAmount(
         );
 
         if (i < recordsLength) {
-            withdrawRecords[0] = WithdrawRecord(i, lastestAmounts);
+            withdrawRecords[0] = WithdrawRecord(i, latestAmounts);
         } else {
             withdrawRecords[0] = WithdrawRecord(0, 0);
         }
     }
 
-    if (lastestAmounts + amount > WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL)
+    if (latestAmounts + amount > WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL)
         revert WithdrawAmountLimitPerIntervalReached();
 
     _;
@@ -165,9 +175,10 @@ function withdraw(
     withdrawRecords.push(WithdrawRecord(block.timestamp, amount));
 
     withdrawRecords[0].amount += amount;
-    if (withdrawRecords[0].timestamp == 0)
+    if (withdrawRecords[0].timestamp == 0) {
         withdrawRecords[0].timestamp = withdrawRecords.length - 1;
-
+        withdrawRecords[0].amount = amount;
+    }
 
     ERC20(TOKEN_ADDRESS).transfer(msg.sender, amount);
     emit Withdraw(msg.sender, block.timestamp, amount);
