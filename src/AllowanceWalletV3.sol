@@ -10,6 +10,8 @@ contract AllowanceWalletV3 {
     error WithdrawAmountLimitPerIntervalReached();
     error WithdrawAmountLimitPerTimeReached();
     error NoEnoughTokenAmount();
+    error WithdrawInProgress();
+    error InsufficientBalance();
 
     struct WithdrawRecord {
         uint256 timestamp;
@@ -17,20 +19,26 @@ contract AllowanceWalletV3 {
     }
 
     WithdrawRecord[] private withdrawRecords;
+    mapping(address => uint256) private tokenAmounts;
 
     // price feed contract address info: https://docs.chain.link/data-feeds/price-feeds/addresses?network=ethereum&page=1
     // ERC20 token => price feed contract token/USD, like UNI/USD
     mapping(address => address) private tokenPriceContracts;
 
-    bool private withdrawFlag;
     uint256 private tokenPrice;
 
     address public immutable OWNER;
     address public immutable BASIC_TOKEN_ADDRESS; // Basic token, example USDT
 
     uint256 private constant WITHDRAW_INTERVAL = 1 days;
-    uint256 private constant WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL = 100 * 1e6;
-    uint256 private constant WITHDRAW_AMOUNT_LIMIT_PER_TIME = 50 * 1e6;
+
+    uint256 private constant PRICE_DECIMALS = 1e8;
+    uint256 private constant WITHDRAW_AMOUNT_LIMIT_PER_INTERVAL =
+        100 * 1e6 * PRICE_DECIMALS;
+    uint256 private constant WITHDRAW_AMOUNT_LIMIT_PER_TIME =
+        50 * 1e6 * PRICE_DECIMALS;
+
+    bool private lock;
 
     event Withdraw(
         address indexed to,
@@ -38,23 +46,28 @@ contract AllowanceWalletV3 {
         uint256 amount
     );
 
+    event Deposit(address indexed to, address indexed token, uint256 amount);
+
     modifier onlyOwner() {
         if (msg.sender != OWNER) revert NotOwner();
         _;
     }
 
-    modifier withdrawState(address token) {
-        if (withdrawFlag) revert InLastWithdraw();
-
-        withdrawFlag = true;
-        tokenPrice = getTokenPrice(token);
+    modifier checkLock() {
+        if (lock) revert WithdrawInProgress();
+        lock = true;
         _;
-        withdrawFlag = false;
+        lock = false;
+    }
+
+    modifier withdrawState(address token) {
+        if (token == BASIC_TOKEN_ADDRESS) tokenPrice = 1e8;
+        else tokenPrice = getTokenPrice(token);
+        _;
     }
 
     modifier checkTokenAmount(address token, uint256 amount) {
-        if (IERC20(token).balanceOf(address(this)) < amount)
-            revert NoEnoughTokenAmount();
+        if (tokenAmounts[token] < amount) revert NoEnoughTokenAmount();
         _;
     }
 
@@ -117,6 +130,7 @@ contract AllowanceWalletV3 {
     )
         external
         onlyOwner
+        checkLock
         withdrawState(token)
         checkTokenAmount(token, amount)
         checkWithdrawAmountLimitPerTime(token, amount)
@@ -127,8 +141,10 @@ contract AllowanceWalletV3 {
         withdrawRecords.push(WithdrawRecord(block.timestamp, tokenValue));
 
         withdrawRecords[0].amount += tokenValue;
-        if (withdrawRecords[0].timestamp == 0)
+        if (withdrawRecords[0].timestamp == 0) {
             withdrawRecords[0].timestamp = withdrawRecords.length - 1;
+            withdrawRecords[0].amount = tokenValue;
+        }
 
         IERC20(token).transfer(msg.sender, amount);
         emit Withdraw(msg.sender, block.timestamp, tokenValue);
@@ -141,10 +157,21 @@ contract AllowanceWalletV3 {
         tokenPriceContracts[token] = tokenPriceContract;
     }
 
+    function deposit(address token, uint256 amount) external onlyOwner {
+        if (
+            IERC20(token).balanceOf(address(msg.sender)) <
+            tokenAmounts[token] + amount
+        ) revert InsufficientBalance();
+        tokenAmounts[token] += amount;
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        emit Deposit(msg.sender, token, amount);
+    }
+
     function getTokenPrice(address token) internal view returns (uint256) {
         AggregatorV3Interface priceContract = AggregatorV3Interface(
             tokenPriceContracts[token]
         );
+        // pirce 1085280000
         (, int256 price, , , ) = priceContract.latestRoundData();
         return uint256(price);
     }

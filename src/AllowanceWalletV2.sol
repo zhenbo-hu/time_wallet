@@ -10,6 +10,8 @@ contract AllowanceWalletV2 {
     error NoEnoughTokenAmount();
     error ExistTokenRule();
     error NotExistTokenRule();
+    error WithdrawInProgress();
+    error InsufficientBalance();
 
     struct WithdrawRecord {
         uint256 timestamp;
@@ -25,8 +27,11 @@ contract AllowanceWalletV2 {
 
     mapping(address => TokenWithdrawRule) private tokenWithdrawRules;
     mapping(address => WithdrawRecord[]) private withdrawRecords;
+    mapping(address => uint256) private tokenAmounts;
 
     address public immutable OWNER;
+
+    bool private lock;
 
     event Withdraw(
         address indexed to,
@@ -34,9 +39,18 @@ contract AllowanceWalletV2 {
         uint256 amount
     );
 
+    event Deposit(address indexed to, address indexed token, uint256 amount);
+
     modifier onlyOwner() {
         if (msg.sender != OWNER) revert NotOwner();
         _;
+    }
+
+    modifier checkLock() {
+        if (lock) revert WithdrawInProgress();
+        lock = true;
+        _;
+        lock = false;
     }
 
     modifier checkTokenRule(address token) {
@@ -45,8 +59,7 @@ contract AllowanceWalletV2 {
     }
 
     modifier checkTokenAmount(address token, uint256 amount) {
-        if (IERC20(token).balanceOf(address(this)) < amount)
-            revert NoEnoughTokenAmount();
+        if (tokenAmounts[token] < amount) revert NoEnoughTokenAmount();
         _;
     }
 
@@ -106,19 +119,32 @@ contract AllowanceWalletV2 {
     )
         external
         onlyOwner
+        checkLock
         checkTokenAmount(token, amount)
         checkTokenWithdrawRule(token, block.timestamp, amount)
     {
         withdrawRecords[token].push(WithdrawRecord(block.timestamp, amount));
 
         withdrawRecords[token][0].amount += amount;
-        if (withdrawRecords[token][0].timestamp == 0)
+        if (withdrawRecords[token][0].timestamp == 0) {
             withdrawRecords[token][0].timestamp =
                 withdrawRecords[token].length -
                 1;
+            withdrawRecords[token][0].amount = amount;
+        }
 
         IERC20(token).transfer(msg.sender, amount);
         emit Withdraw(msg.sender, block.timestamp, amount);
+    }
+
+    function deposit(address token, uint256 amount) external onlyOwner {
+        if (
+            IERC20(token).balanceOf(address(msg.sender)) <
+            tokenAmounts[token] + amount
+        ) revert InsufficientBalance();
+        tokenAmounts[token] += amount;
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        emit Deposit(msg.sender, token, amount);
     }
 
     function setTokenRule(

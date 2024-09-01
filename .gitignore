@@ -2,3 +2,6 @@
 cache
 lib/
 out/
+.env
+broadcast/
+.DS_Store

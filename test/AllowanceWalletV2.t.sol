@@ -17,11 +17,13 @@ contract AllowanceWalletV3Test is Test {
     function setUp() public {
         usdt = new ERC20Token("Tether USD", "USDT", 6, TOTAL_SUPPLY);
         wEth = new ERC20Token("Wrap Ether", "wEth", 18, TOTAL_SUPPLY * 1e12);
-        uni = new ERC20Token("uniswap token", "UNI", 18, TOTAL_SUPPLY * 1e12);
         allowanceWallet = new AllowanceWalletV2();
 
-        usdt.transfer(address(allowanceWallet), TOTAL_SUPPLY);
-        wEth.transfer(address(allowanceWallet), TOTAL_SUPPLY * 1e12);
+        usdt.approve(address(allowanceWallet), TOTAL_SUPPLY);
+        allowanceWallet.deposit(address(usdt), TOTAL_SUPPLY);
+
+        wEth.approve(address(allowanceWallet), TOTAL_SUPPLY * 1e12);
+        allowanceWallet.deposit(address(wEth), TOTAL_SUPPLY * 1e12);
 
         allowanceWallet.setTokenRule(
             address(usdt),
@@ -42,6 +44,42 @@ contract AllowanceWalletV3Test is Test {
         AllowanceWalletV2 localAllowanceWallet = new AllowanceWalletV2();
 
         assertEq(localAllowanceWallet.OWNER(), address(this));
+    }
+
+    function testDepositSuccessful() public {
+        ERC20Token localUsdt = new ERC20Token(
+            "Tether USD",
+            "USDT",
+            6,
+            TOTAL_SUPPLY
+        );
+        AllowanceWalletV2 localAllowanceWallet = new AllowanceWalletV2();
+
+        localUsdt.approve(address(localAllowanceWallet), TOTAL_SUPPLY);
+        localAllowanceWallet.deposit(address(localUsdt), TOTAL_SUPPLY);
+
+        assertEq(
+            localUsdt.balanceOf(address(localAllowanceWallet)),
+            TOTAL_SUPPLY
+        );
+    }
+
+    function testDepositRevertInsufficientBalance() public {
+        vm.prank(address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266));
+        ERC20Token localUsdt = new ERC20Token(
+            "Tether USD",
+            "USDT",
+            6,
+            TOTAL_SUPPLY
+        );
+        AllowanceWalletV2 localAllowanceWallet = new AllowanceWalletV2();
+
+        localUsdt.approve(address(localAllowanceWallet), TOTAL_SUPPLY);
+        vm.expectRevert(AllowanceWalletV2.InsufficientBalance.selector);
+
+        localAllowanceWallet.deposit(address(localUsdt), TOTAL_SUPPLY);
+
+        assertEq(localUsdt.balanceOf(address(localAllowanceWallet)), 0);
     }
 
     function testSetTokenRule() public {

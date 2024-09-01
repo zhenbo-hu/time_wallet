@@ -16,7 +16,8 @@ contract AllowanceWalletTest is Test {
         usdt = new ERC20Token("Tether USD", "USDT", 6, TOTAL_SUPPLY);
         allowanceWallet = new AllowanceWallet(address(usdt));
 
-        usdt.transfer(address(allowanceWallet), TOTAL_SUPPLY);
+        usdt.approve(address(allowanceWallet), TOTAL_SUPPLY);
+        allowanceWallet.deposit(TOTAL_SUPPLY);
     }
 
     function testConstructor() public {
@@ -26,6 +27,46 @@ contract AllowanceWalletTest is Test {
 
         assertEq(localAllowanceWallet.OWNER(), address(this));
         assertEq(localAllowanceWallet.TOKEN_ADDRESS(), address(usdt));
+    }
+
+    function testDepositSuccessful(uint96 totalSupply) public {
+        ERC20Token localUsdt = new ERC20Token(
+            "Tether USD",
+            "USDT",
+            6,
+            totalSupply
+        );
+        AllowanceWallet localAllowanceWallet = new AllowanceWallet(
+            address(localUsdt)
+        );
+
+        localUsdt.approve(address(localAllowanceWallet), totalSupply);
+        localAllowanceWallet.deposit(totalSupply);
+
+        assertEq(
+            localUsdt.balanceOf(address(localAllowanceWallet)),
+            totalSupply
+        );
+    }
+
+    function testDepositRevertInsufficientBalance() public {
+        vm.prank(address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266));
+        ERC20Token localUsdt = new ERC20Token(
+            "Tether USD",
+            "USDT",
+            6,
+            TOTAL_SUPPLY
+        );
+
+        AllowanceWallet localAllowanceWallet = new AllowanceWallet(
+            address(localUsdt)
+        );
+        localUsdt.approve(address(localAllowanceWallet), TOTAL_SUPPLY);
+
+        vm.expectRevert(AllowanceWallet.InsufficientBalance.selector);
+
+        localAllowanceWallet.deposit(TOTAL_SUPPLY);
+        assertEq(localUsdt.balanceOf(address(localAllowanceWallet)), 0);
     }
 
     function testWithdraw() public {
